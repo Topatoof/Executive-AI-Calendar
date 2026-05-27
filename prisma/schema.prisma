@@ -1,0 +1,202 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum CoachingStyle {
+  SUPPORTIVE
+  STRICT
+  MILITARY
+  STRATEGIC
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  MISSED
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum BlockType {
+  DEEP_WORK
+  SHALLOW_WORK
+  MEETING
+  HABIT
+  BREAK
+  BUFFER
+}
+
+enum BlockStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  MISSED
+  RESCHEDULED
+}
+
+enum BrainDumpStatus {
+  PENDING
+  PROCESSING
+  EXTRACTED
+  CONFIRMED
+  FAILED
+}
+
+enum AccountabilityType {
+  WARNING
+  NUDGE
+  PERFORMANCE_REVIEW
+  RESCHEDULE_SUGGESTION
+  OVERLOAD_ALERT
+}
+
+model OwnerProfile {
+  id                String        @id @default(cuid())
+  name              String        @default("Owner")
+  timezone          String        @default("America/New_York")
+  workStartHour     Int           @default(8)
+  workEndHour       Int           @default(18)
+  focusStartHour    Int           @default(8)
+  focusEndHour      Int           @default(12)
+  coachingStyle     CoachingStyle @default(STRICT)
+  maxDailyMinutes   Int           @default(480)
+  bufferMinutes     Int           @default(15)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  brainDumps           BrainDump[]
+  projects             Project[]
+  tasks                Task[]
+  habits               Habit[]
+  scheduleBlocks       ScheduleBlock[]
+  accountabilityEvents AccountabilityEvent[]
+  analyticsSnapshots   AnalyticsSnapshot[]
+}
+
+model BrainDump {
+  id          String          @id @default(cuid())
+  ownerId     String
+  owner       OwnerProfile    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  rawContent  String
+  sourceType  String          @default("text")
+  status      BrainDumpStatus @default(PENDING)
+  extraction  Json?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  tasks Task[]
+}
+
+model Project {
+  id          String       @id @default(cuid())
+  ownerId     String
+  owner       OwnerProfile @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  targetDate  DateTime?
+  status      String       @default("active")
+  color       String       @default("#6366f1")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  tasks Task[]
+}
+
+model Task {
+  id              String       @id @default(cuid())
+  ownerId         String
+  owner           OwnerProfile @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projectId       String?
+  project         Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  brainDumpId     String?
+  brainDump       BrainDump?   @relation(fields: [brainDumpId], references: [id], onDelete: SetNull)
+  title           String
+  description     String?
+  category        String       @default("general")
+  status          TaskStatus   @default(PENDING)
+  priority        TaskPriority @default(MEDIUM)
+  importance      Int          @default(5)
+  urgency         Int          @default(5)
+  cognitiveLoad   Int          @default(5)
+  estimatedMinutes Int         @default(60)
+  deadline        DateTime?
+  dependsOnId     String?
+  dependsOn       Task?        @relation("TaskDependencies", fields: [dependsOnId], references: [id], onDelete: SetNull)
+  dependents      Task[]       @relation("TaskDependencies")
+  recurrence      String?
+  confidence      Float        @default(1.0)
+  completedAt     DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  scheduleBlocks ScheduleBlock[]
+}
+
+model Habit {
+  id              String       @id @default(cuid())
+  ownerId         String
+  owner           OwnerProfile @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  title           String
+  category        String       @default("health")
+  frequencyPerWeek Int         @default(3)
+  estimatedMinutes Int         @default(45)
+  preferredDays   Json         @default("[]")
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+model ScheduleBlock {
+  id              String       @id @default(cuid())
+  ownerId         String
+  owner           OwnerProfile @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  taskId          String?
+  task            Task?        @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  title           String
+  blockType       BlockType    @default(DEEP_WORK)
+  status          BlockStatus  @default(SCHEDULED)
+  startTime       DateTime
+  endTime         DateTime
+  explanation     String?
+  rescheduleCount Int          @default(0)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+model AccountabilityEvent {
+  id          String             @id @default(cuid())
+  ownerId     String
+  owner       OwnerProfile       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  type        AccountabilityType
+  message     String
+  recommendation String?
+  severity    Int                @default(5)
+  acknowledged Boolean           @default(false)
+  createdAt   DateTime           @default(now())
+}
+
+model AnalyticsSnapshot {
+  id                  String       @id @default(cuid())
+  ownerId             String
+  owner               OwnerProfile @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  weekStart           DateTime
+  completedTasks      Int          @default(0)
+  missedDeadlines     Int          @default(0)
+  focusMinutes        Int          @default(0)
+  consistencyStreak   Int          @default(0)
+  workloadMinutes     Int          @default(0)
+  completionRate      Float        @default(0)
+  burnoutRisk         Float        @default(0)
+  createdAt           DateTime     @default(now())
+}
