@@ -1,11 +1,31 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { CommandPalette } from "@/components/command-palette";
 import { ThemeToggle } from "@/components/theme-toggle";
+import {
+  ACCENT_STORAGE_KEY,
+  BACKGROUND_BLUR_STORAGE_KEY,
+  BACKGROUND_STORAGE_KEY,
+  applyAccentColor,
+  applyBackgroundBlur,
+  applyBackgroundStyle,
+  type BackgroundStyle,
+} from "@/lib/theme";
 
 export function AppShell({ children }: { children: ReactNode }) {
+  useEffect(() => {
+    const savedAccent = localStorage.getItem(ACCENT_STORAGE_KEY);
+    if (savedAccent) applyAccentColor(savedAccent);
+
+    const savedBackground = localStorage.getItem(BACKGROUND_STORAGE_KEY);
+    applyBackgroundStyle((savedBackground as BackgroundStyle) || "none");
+
+    const savedBlur = localStorage.getItem(BACKGROUND_BLUR_STORAGE_KEY);
+    applyBackgroundBlur(savedBlur ? Number(savedBlur) : 0);
+  }, []);
+
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar />

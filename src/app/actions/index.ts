@@ -6,12 +6,12 @@ import { getOrCreateOwner } from "@/lib/owner";
 import { extractFromBrainDump } from "@/lib/ai/extract";
 import {
   generateDailySchedule,
-  generateWeeklySchedule,
+  generateSchedule,
 } from "@/lib/scheduler/engine";
 import { generateAccountabilityMessage } from "@/lib/ai/accountability";
 import { computeAnalytics } from "@/lib/analytics";
 import type { TaskPriority } from "@prisma/client";
-import { startOfDay, startOfWeek } from "date-fns";
+import { endOfDay, endOfWeek, startOfDay, startOfWeek } from "date-fns";
 import type { ExtractionResult } from "@/lib/ai/schemas";
 
 export async function submitBrainDump(content: string) {
@@ -123,19 +123,22 @@ export async function generateScheduleAction(mode: "daily" | "weekly") {
     bufferMinutes: owner.bufferMinutes,
   };
 
+  const now = new Date();
+  const generationStart = startOfDay(now);
+  const generationEnd = mode === "daily" ? endOfDay(now) : endOfWeek(now, { weekStartsOn: 1 });
+  const cleanupStart =
+    mode === "daily" ? generationStart : startOfWeek(now, { weekStartsOn: 1 });
+  const cleanupEnd = generationEnd;
+
   const result =
     mode === "daily"
-      ? generateDailySchedule(schedulable, prefs, startOfDay(new Date()))
-      : generateWeeklySchedule(
-          schedulable,
-          prefs,
-          startOfWeek(new Date(), { weekStartsOn: 1 })
-        );
+      ? generateDailySchedule(schedulable, prefs, generationStart)
+      : generateSchedule(schedulable, prefs, generationStart, generationEnd);
 
   await prisma.scheduleBlock.deleteMany({
     where: {
       ownerId: owner.id,
-      startTime: { gte: startOfDay(new Date()) },
+      startTime: { gte: cleanupStart, lte: cleanupEnd },
       status: "SCHEDULED",
     },
   });
@@ -203,6 +206,53 @@ export async function updateBlockStatus(
 
   revalidatePath("/planner");
   revalidatePath("/dashboard");
+  revalidatePath("/analytics");
+}
+
+export async function updateScheduleBlock(data: {
+  blockId: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  explanation?: string;
+}) {
+  const owner = await getOrCreateOwner();
+  const startTime = new Date(data.startTime);
+  const endTime = new Date(data.endTime);
+
+  if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime())) {
+    throw new Error("Invalid start or end time.");
+  }
+  if (endTime <= startTime) {
+    throw new Error("End time must be after start time.");
+  }
+
+  await prisma.scheduleBlock.update({
+    where: { id: data.blockId, ownerId: owner.id },
+    data: {
+      title: data.title.trim() || "Untitled block",
+      startTime,
+      endTime,
+      explanation: data.explanation?.trim() || null,
+      rescheduleCount: { increment: 1 },
+    },
+  });
+
+  revalidatePath("/planner");
+  revalidatePath("/dashboard");
+  revalidatePath("/calendar");
+}
+
+export async function deleteScheduleBlock(blockId: string) {
+  const owner = await getOrCreateOwner();
+
+  await prisma.scheduleBlock.deleteMany({
+    where: { id: blockId, ownerId: owner.id },
+  });
+
+  revalidatePath("/planner");
+  revalidatePath("/dashboard");
+  revalidatePath("/calendar");
   revalidatePath("/analytics");
 }
 

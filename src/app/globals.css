@@ -45,6 +45,11 @@
   --border: oklch(0.9 0.01 265);
   --input: oklch(0.9 0.01 265);
   --ring: oklch(0.45 0.2 265);
+  --app-bg-pattern: none;
+  --app-bg-size: auto;
+  --app-bg-repeat: no-repeat;
+  --app-bg-position: center;
+  --app-bg-blur: 0px;
 }
 
 .dark {
@@ -66,11 +71,54 @@
   --ring: oklch(0.65 0.18 265);
 }
 
+html[data-bg-style="floral"] {
+  --app-bg-pattern: url("/backgrounds/floral-pattern.png");
+  --app-bg-size: 320px auto;
+  --app-bg-repeat: repeat;
+  --app-bg-position: top left;
+}
+
+html[data-bg-style="watercolor"] {
+  --app-bg-pattern:
+    radial-gradient(ellipse at 20% 18%, oklch(0.73 0.12 250 / 0.2) 0 34%, transparent 62%),
+    radial-gradient(ellipse at 72% 28%, oklch(0.74 0.11 20 / 0.18) 0 31%, transparent 60%),
+    radial-gradient(ellipse at 48% 78%, oklch(0.71 0.1 150 / 0.16) 0 35%, transparent 62%);
+  --app-bg-size: cover;
+  --app-bg-repeat: no-repeat;
+  --app-bg-position: center;
+}
+
+html[data-bg-style="geometric"] {
+  --app-bg-pattern:
+    linear-gradient(30deg, oklch(0.7 0.06 260 / 0.12) 12%, transparent 12.5%, transparent 87%, oklch(0.7 0.06 260 / 0.12) 87.5%),
+    linear-gradient(150deg, oklch(0.66 0.05 220 / 0.1) 12%, transparent 12.5%, transparent 87%, oklch(0.66 0.05 220 / 0.1) 87.5%),
+    linear-gradient(90deg, oklch(0.68 0.05 320 / 0.08) 2%, transparent 2.5%, transparent 97%, oklch(0.68 0.05 320 / 0.08) 97.5%);
+  --app-bg-size: 72px 124px;
+  --app-bg-repeat: repeat;
+  --app-bg-position: center;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground antialiased;
+    position: relative;
+    isolation: isolate;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image: var(--app-bg-pattern);
+    background-size: var(--app-bg-size);
+    background-repeat: var(--app-bg-repeat);
+    background-position: var(--app-bg-position);
+    background-attachment: fixed;
+    filter: blur(var(--app-bg-blur));
+    transform: scale(1.03);
   }
 }
