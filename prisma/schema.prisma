@@ -132,6 +132,7 @@ model Task {
   cognitiveLoad   Int          @default(5)
   estimatedMinutes Int         @default(60)
   deadline        DateTime?
+  scheduledDate   DateTime?
   dependsOnId     String?
   dependsOn       Task?        @relation("TaskDependencies", fields: [dependsOnId], references: [id], onDelete: SetNull)
   dependents      Task[]       @relation("TaskDependencies")

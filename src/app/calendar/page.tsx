@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { getOrCreateOwner } from "@/lib/owner";
-import { ScheduleBlockCard } from "@/components/schedule-block-card";
+import { ScheduleBlockList } from "@/components/schedule-block-list";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -77,14 +77,10 @@ export default async function CalendarPage() {
       </div>
 
       <div className="space-y-3">
-        {blocks.map((b) => (
-          <ScheduleBlockCard key={b.id} block={b} />
-        ))}
-        {blocks.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            No upcoming blocks. Generate a plan first.
-          </p>
-        )}
+        <ScheduleBlockList
+          blocks={blocks}
+          emptyMessage="No upcoming blocks. Generate a plan first."
+        />
       </div>
     </div>
   );

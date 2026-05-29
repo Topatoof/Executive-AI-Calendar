@@ -6,6 +6,8 @@ export const extractedTaskSchema = z.object({
   category: z.string().default("general"),
   estimatedMinutes: z.coerce.number().int().positive().default(60),
   deadline: z.string().nullable().optional(),
+  /** Preferred calendar day for scheduling (YYYY-MM-DD). */
+  scheduledDate: z.string().nullable().optional(),
   priority: z
     .preprocess(
       (value) => (typeof value === "string" ? value.toUpperCase() : value),

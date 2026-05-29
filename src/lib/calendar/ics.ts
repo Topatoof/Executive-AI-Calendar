@@ -1,5 +1,6 @@
 import { createEvents, type EventAttributes } from "ics";
 import type { ScheduleBlock, Task } from "@prisma/client";
+import { sortScheduleBlocks } from "@/lib/schedule/sort";
 
 type BlockWithTask = ScheduleBlock & { task: Task | null };
 
@@ -52,7 +53,7 @@ export function blocksToIcsEvents(
 }
 
 export function generateIcsContent(blocks: BlockWithTask[]): string {
-  const { events, errors } = blocksToIcsEvents(blocks);
+  const { events, errors } = blocksToIcsEvents(sortScheduleBlocks(blocks));
   if (events.length === 0) {
     return "";
   }

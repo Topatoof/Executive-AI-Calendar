@@ -4,6 +4,11 @@ import {
   type ExtractionResult,
 } from "@/lib/ai/schemas";
 import { parseModelJson } from "@/lib/ai/json";
+import {
+  applyProjectMatching,
+  type ExistingProject,
+} from "@/lib/project-match";
+import { normalizeExtractionDeadlines } from "@/lib/ai/normalize-extraction";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || "lm-studio",
@@ -13,12 +18,18 @@ const openai = new OpenAI({
 const EXTRACTION_PROMPT = `You are an executive assistant AI. Extract actionable tasks from messy brain dumps.
 
 Rules:
-- Infer deadlines from phrases like "by Friday", "this week", "tomorrow"
+- Infer the plan day from phrases like "on Friday", "this week", "tomorrow", "by Friday" — store as scheduledDate only (not a separate deadline)
 - Estimate realistic durations in minutes
 - Assign importance (1-10), urgency (1-10), cognitiveLoad (1-10)
 - Detect dependencies (dependsOnTitle references another task title)
 - Group related tasks under projectTitle when appropriate
-- Set confidence 0-1 for inferred deadlines/durations
+- If existing projects are provided, assign each task to the best matching existing project using the EXACT existing project title
+- Only propose new projects in "projects" when no existing project fits
+- School/study tasks go to school-related projects; fitness tasks to fitness projects; podcast/content to creative projects
+- Set confidence 0-1 for inferred dates/durations
+- scheduledDate must be YYYY-MM-DD or null; set deadline to null (the app sets due date = session day automatically)
+- When the user assigns work to a specific day, set scheduledDate to that calendar day as YYYY-MM-DD
+- When the user asks for multiple blocks/sessions per chapter, create separate tasks per block with scheduledDate on the requested days when specified
 - Flag ambiguous items in warnings array
 - Today's date context will be provided
 
@@ -36,6 +47,7 @@ Required shape:
       "category": "school|work|fitness|admin|creative|general",
       "estimatedMinutes": 60,
       "deadline": "ISO date string or null",
+      "scheduledDate": "YYYY-MM-DD or null",
       "priority": "LOW|MEDIUM|HIGH|CRITICAL",
       "importance": 5,
       "urgency": 5,
@@ -51,12 +63,23 @@ Required shape:
   "warnings": []
 }`;
 
+function formatExistingProjects(projects: ExistingProject[]): string {
+  if (projects.length === 0) return "No existing projects.";
+  return projects
+    .map((p) => {
+      const desc = p.description ? ` — ${p.description}` : "";
+      return `- ${p.title}${desc}`;
+    })
+    .join("\n");
+}
+
 export async function extractFromBrainDump(
   content: string,
-  todayIso: string
+  todayIso: string,
+  existingProjects: ExistingProject[] = []
 ): Promise<ExtractionResult> {
   if (!process.env.OPENAI_API_KEY) {
-    return mockExtraction(content);
+    return mockExtraction(content, existingProjects);
   }
 
   const completion = await openai.chat.completions.create({
@@ -68,7 +91,13 @@ export async function extractFromBrainDump(
       { role: "system", content: EXTRACTION_PROMPT },
       {
         role: "user",
-        content: `Today is ${todayIso}.\n\nBrain dump:\n${content}`,
+        content: `Today is ${todayIso}.
+
+Existing projects (reuse exact titles when relevant):
+${formatExistingProjects(existingProjects)}
+
+Brain dump:
+${content}`,
       },
     ],
     temperature: 0.2,
@@ -78,10 +107,16 @@ export async function extractFromBrainDump(
   if (!raw) throw new Error("No extraction response from AI");
 
   const parsed = parseModelJson(raw);
-  return extractionResultSchema.parse(parsed);
+  const extraction = extractionResultSchema.parse(parsed);
+  return normalizeExtractionDeadlines(
+    applyProjectMatching(extraction, existingProjects)
+  );
 }
 
-function mockExtraction(content: string): ExtractionResult {
+function mockExtraction(
+  content: string,
+  existingProjects: ExistingProject[] = []
+): ExtractionResult {
   const lower = content.toLowerCase();
   const tasks: ExtractionResult["tasks"] = [];
 
@@ -90,7 +125,7 @@ function mockExtraction(content: string): ExtractionResult {
       title: "Finish economics paper",
       category: "school",
       estimatedMinutes: 180,
-      deadline: getNextFriday(),
+      scheduledDate: getNextFriday(),
       priority: "CRITICAL",
       importance: 9,
       urgency: 9,
@@ -163,23 +198,25 @@ function mockExtraction(content: string): ExtractionResult {
     });
   }
 
-  const projects = [
-    ...new Set(tasks.map((t) => t.projectTitle).filter(Boolean)),
-  ].map((title) => ({
-    title: title as string,
-    description: undefined,
-    targetDate: null,
-  }));
-
-  return {
+  const result: ExtractionResult = {
     tasks,
-    projects,
+    projects: [
+      ...new Set(tasks.map((t) => t.projectTitle).filter(Boolean)),
+    ].map((title) => ({
+      title: title as string,
+      description: undefined,
+      targetDate: null,
+    })),
     summary: `Extracted ${tasks.length} task(s) from brain dump.`,
     warnings:
       tasks.some((t) => t.confidence < 0.7)
         ? ["Some deadlines/durations have low confidence — please review."]
         : [],
   };
+
+  return normalizeExtractionDeadlines(
+    applyProjectMatching(result, existingProjects)
+  );
 }
 
 function getNextFriday(): string {

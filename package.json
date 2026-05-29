@@ -9,6 +9,7 @@
     "lint": "next lint",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
+    "db:sync": "prisma db push && prisma generate",
     "db:seed": "node prisma/seed.cjs",
     "db:studio": "prisma studio",
     "test": "vitest run",

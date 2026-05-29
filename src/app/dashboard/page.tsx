@@ -11,7 +11,11 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ScheduleBlockCard } from "@/components/schedule-block-card";
+import {
+  ScheduleBlockList,
+  ScheduleBlockOverdueList,
+} from "@/components/schedule-block-list";
+import { partitionScheduleBlocks } from "@/lib/schedule/sort";
 import { formatDuration } from "@/lib/utils";
 import { startOfDay, endOfDay } from "date-fns";
 import Link from "next/link";
@@ -47,6 +51,8 @@ export default async function DashboardPage() {
     }),
     computeAnalytics(owner.id),
   ]);
+
+  const { overdue: overdueBlocks } = partitionScheduleBlocks(blocks);
 
   return (
     <div className="space-y-6">
@@ -128,7 +134,11 @@ export default async function DashboardPage() {
                 </Link>
               </p>
             ) : (
-              blocks.map((b) => <ScheduleBlockCard key={b.id} block={b} />)
+              <ScheduleBlockList
+                blocks={blocks}
+                emptyMessage="No blocks today."
+                overdueMode="omit"
+              />
             )}
           </CardContent>
         </Card>
@@ -136,21 +146,44 @@ export default async function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>Overdue</CardTitle>
-            <CardDescription>Tasks past deadline</CardDescription>
+            <CardDescription>
+              Tasks past deadline and schedule blocks not marked done
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {overdueTasks.length === 0 ? (
+          <CardContent className="space-y-4">
+            {overdueTasks.length === 0 && overdueBlocks.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nothing overdue.</p>
             ) : (
-              overdueTasks.map((t) => (
-                <div
-                  key={t.id}
-                  className="flex items-center justify-between rounded-lg border p-3"
-                >
-                  <span className="text-sm font-medium">{t.title}</span>
-                  <Badge variant="destructive">{t.priority}</Badge>
-                </div>
-              ))
+              <>
+                {overdueTasks.length > 0 && (
+                  <div className="space-y-2">
+                    {overdueTasks.length > 0 && overdueBlocks.length > 0 && (
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Tasks
+                      </p>
+                    )}
+                    {overdueTasks.map((t) => (
+                      <div
+                        key={t.id}
+                        className="flex items-center justify-between rounded-lg border p-3"
+                      >
+                        <span className="text-sm font-medium">{t.title}</span>
+                        <Badge variant="destructive">{t.priority}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {overdueBlocks.length > 0 && (
+                  <div className="space-y-2">
+                    {overdueTasks.length > 0 && (
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Schedule blocks
+                      </p>
+                    )}
+                    <ScheduleBlockOverdueList blocks={blocks} />
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>

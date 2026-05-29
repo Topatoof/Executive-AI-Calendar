@@ -9,6 +9,7 @@ export interface SchedulableTask {
   urgency: number;
   cognitiveLoad: number;
   deadline: Date | null;
+  scheduledDate: Date | null;
   category: string;
   status: string;
 }
@@ -29,6 +30,12 @@ export interface ScheduleBlockInput {
   startTime: Date;
   endTime: Date;
   explanation: string;
+}
+
+/** Existing calendar occupancy the scheduler must not overlap. */
+export interface ReservedSlot {
+  startTime: Date;
+  endTime: Date;
 }
 
 export interface ScheduleResult {

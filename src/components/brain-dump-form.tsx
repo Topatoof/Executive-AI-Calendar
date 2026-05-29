@@ -7,12 +7,25 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { submitBrainDump, confirmBrainDump } from "@/app/actions";
 import type { ExtractionResult } from "@/lib/ai/schemas";
+import {
+  deadlineToIso,
+  formatDateInputValue,
+  formatDeadlineLabel,
+} from "@/lib/dates";
 import { formatDuration } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 
 const EXAMPLE =
   "I need to finish my economics paper by Friday, train legs 3x this week, edit my podcast, study calculus chapter 4, and call my bank.";
 const STICKER_STORAGE_KEY = "exec-ai-brain-dump-stickers";
+
+const EXTRACTION_STAGES = [
+  { label: "Reading your brain dump…", until: 20 },
+  { label: "Identifying tasks…", until: 45 },
+  { label: "Matching projects…", until: 65 },
+  { label: "Scoring priority…", until: 85 },
+  { label: "Finalizing extraction…", until: 95 },
+] as const;
 
 type StickerAsset = {
   id: string;
@@ -118,6 +131,8 @@ function getBlockedRect(el: HTMLElement | null) {
 export function BrainDumpForm() {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(false);
+  const [extractionProgress, setExtractionProgress] = useState(0);
+  const [extractionStage, setExtractionStage] = useState("");
   const [dumpId, setDumpId] = useState<string | null>(null);
   const [extraction, setExtraction] = useState<ExtractionResult | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -137,6 +152,46 @@ export function BrainDumpForm() {
     size: number;
   } | null>(null);
   const outputRef = useRef<HTMLDivElement>(null);
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!loading) {
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
+      return;
+    }
+
+    setExtractionProgress(5);
+    setExtractionStage(EXTRACTION_STAGES[0].label);
+    let progress = 5;
+    let stageIndex = 0;
+
+    progressTimerRef.current = setInterval(() => {
+      const ceiling =
+        EXTRACTION_STAGES[stageIndex + 1]?.until ?? EXTRACTION_STAGES.at(-1)!.until;
+      const bump = Math.max(0.5, (ceiling - progress) * 0.07);
+      progress = Math.min(ceiling, progress + bump);
+
+      if (
+        stageIndex < EXTRACTION_STAGES.length - 1 &&
+        progress >= EXTRACTION_STAGES[stageIndex].until
+      ) {
+        stageIndex += 1;
+        setExtractionStage(EXTRACTION_STAGES[stageIndex].label);
+      }
+
+      setExtractionProgress(progress);
+    }, 100);
+
+    return () => {
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
+    };
+  }, [loading]);
 
   useEffect(() => {
     try {
@@ -194,8 +249,12 @@ export function BrainDumpForm() {
     setLoading(true);
     setDone(false);
     setError(null);
+    setExtraction(null);
     try {
       const result = await submitBrainDump(content);
+      setExtractionProgress(100);
+      setExtractionStage("Extraction complete!");
+      await new Promise((resolve) => setTimeout(resolve, 400));
       setDumpId(result.dumpId);
       setExtraction(result.extraction);
       setTimeout(() => {
@@ -203,8 +262,14 @@ export function BrainDumpForm() {
       }, 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Extraction failed");
+      setExtractionProgress(0);
+      setExtractionStage("");
     } finally {
       setLoading(false);
+      setTimeout(() => {
+        setExtractionProgress(0);
+        setExtractionStage("");
+      }, 600);
     }
   }
 
@@ -225,10 +290,16 @@ export function BrainDumpForm() {
     }
   }
 
+  function removeTask(index: number) {
+    if (!extraction) return;
+    const tasks = extraction.tasks.filter((_, i) => i !== index);
+    setExtraction({ ...extraction, tasks });
+  }
+
   function updateTask(
     index: number,
     field: keyof ExtractionResult["tasks"][0],
-    value: string | number
+    value: string | number | null
   ) {
     if (!extraction) return;
     const tasks = [...extraction.tasks];
@@ -485,6 +556,28 @@ export function BrainDumpForm() {
           Extraction card. Click Confirm & Save Tasks to send them to Planner.
         </p>
 
+        {loading && (
+          <div
+            className="space-y-3 rounded-lg border bg-muted/30 p-4"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-muted-foreground">{extractionStage}</span>
+              <span className="shrink-0 font-medium tabular-nums">
+                {Math.round(extractionProgress)}%
+              </span>
+            </div>
+            <div className="h-2.5 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary transition-[width] duration-150 ease-out"
+                style={{ width: `${Math.min(100, extractionProgress)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {error && (
           <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
             {error}
@@ -512,29 +605,70 @@ export function BrainDumpForm() {
                   {w}
                 </p>
               ))}
-              {extraction.tasks.map((task, i) => (
-                <div key={i} className="rounded-lg border p-4 space-y-2">
-                  <input
-                    className="w-full bg-transparent font-medium outline-none"
-                    value={task.title}
-                    onChange={(e) => updateTask(i, "title", e.target.value)}
-                  />
+              {extraction.tasks.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  All tasks removed. Extract again or add tasks back before
+                  confirming.
+                </p>
+              ) : (
+                extraction.tasks.map((task, i) => (
+                  <div key={i} className="rounded-lg border p-4 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <input
+                        className="min-w-0 flex-1 bg-transparent font-medium outline-none"
+                        value={task.title}
+                        onChange={(e) => updateTask(i, "title", e.target.value)}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="shrink-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => removeTask(i)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
                   <div className="flex flex-wrap gap-2">
+                    {task.projectTitle ? (
+                      <Badge variant="outline">Project: {task.projectTitle}</Badge>
+                    ) : (
+                      <Badge variant="secondary">No project</Badge>
+                    )}
                     <Badge variant="outline">{task.category}</Badge>
                     <Badge>{task.priority}</Badge>
                     <Badge variant="secondary">
                       {formatDuration(task.estimatedMinutes)}
                     </Badge>
-                    {task.deadline && (
-                      <Badge variant="warning">
-                        Due {new Date(task.deadline).toLocaleDateString()}
+                    {formatDeadlineLabel(task.scheduledDate) && (
+                      <Badge variant="outline">
+                        {formatDeadlineLabel(task.scheduledDate)}
                       </Badge>
                     )}
                     {task.confidence < 0.7 && (
                       <Badge variant="warning">Low confidence</Badge>
                     )}
                   </div>
-                  <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                    <label className="sm:col-span-2">
+                      Session day
+                      <input
+                        type="date"
+                        value={formatDateInputValue(task.scheduledDate)}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          const iso = raw ? deadlineToIso(raw) : null;
+                          const tasks = [...extraction!.tasks];
+                          tasks[i] = {
+                            ...tasks[i],
+                            scheduledDate: iso,
+                            deadline: iso,
+                          };
+                          setExtraction({ ...extraction!, tasks });
+                        }}
+                        className="mt-1 w-full rounded border bg-transparent px-2 py-1"
+                      />
+                    </label>
                     <label>
                       Importance
                       <input
@@ -579,8 +713,12 @@ export function BrainDumpForm() {
                     </label>
                   </div>
                 </div>
-              ))}
-              <Button onClick={handleConfirm} disabled={confirming}>
+              ))
+              )}
+              <Button
+                onClick={handleConfirm}
+                disabled={confirming || extraction.tasks.length === 0}
+              >
                 {confirming && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Confirm & Save Tasks
               </Button>

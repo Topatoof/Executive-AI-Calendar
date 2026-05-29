@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { getOrCreateOwner } from "@/lib/owner";
-import { ScheduleBlockCard } from "@/components/schedule-block-card";
+import { PlannerScheduleByDay } from "@/components/planner-schedule-by-day";
 import { PlannerActions } from "@/components/planner-actions";
 import {
   Card,
@@ -9,12 +9,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { startOfWeek, endOfWeek } from "date-fns";
+import { getPlannerViewRange } from "@/lib/planner-horizon";
+import { format } from "date-fns";
 
 export default async function PlannerPage() {
   const owner = await getOrCreateOwner();
-  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
-  const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
+  const { viewStart: weekStart, viewEnd: weekEnd } = getPlannerViewRange();
 
   const blocks = await prisma.scheduleBlock.findMany({
     where: {
@@ -31,7 +31,7 @@ export default async function PlannerPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Planner</h1>
           <p className="text-muted-foreground">
-            AI-generated schedule for this week
+            {format(weekStart, "MMM d")} – {format(weekEnd, "MMM d, yyyy")}
           </p>
         </div>
         <PlannerActions />
@@ -50,7 +50,11 @@ export default async function PlannerPage() {
               No schedule yet. Add tasks via Brain Dump, then generate a plan.
             </p>
           ) : (
-            blocks.map((b) => <ScheduleBlockCard key={b.id} block={b} />)
+            <PlannerScheduleByDay
+              blocks={blocks}
+              weekStart={weekStart}
+              weekEnd={weekEnd}
+            />
           )}
         </CardContent>
       </Card>
