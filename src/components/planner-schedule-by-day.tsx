@@ -4,6 +4,13 @@ import {
   groupScheduleBlocksByDay,
   type ScheduleBlockWithTask,
 } from "@/lib/schedule/sort";
+import { addDays, isSameDay, startOfDay } from "date-fns";
+
+function isTodayOrTomorrow(date: Date, now: Date = new Date()) {
+  const day = startOfDay(date);
+  const today = startOfDay(now);
+  return isSameDay(day, today) || isSameDay(day, addDays(today, 1));
+}
 
 export function PlannerScheduleByDay({
   blocks,
@@ -23,7 +30,7 @@ export function PlannerScheduleByDay({
           key={date.toISOString()}
           dateIso={date.toISOString()}
           blockCount={dayBlocks.length}
-          defaultCollapsed={dayBlocks.length === 0}
+          defaultCollapsed={!isTodayOrTomorrow(date)}
         >
           {dayBlocks.length === 0 ? (
             <p className="text-sm text-muted-foreground">No blocks scheduled.</p>

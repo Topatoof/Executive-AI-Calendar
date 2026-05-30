@@ -197,7 +197,7 @@ model AnalyticsSnapshot {
   focusMinutes        Int          @default(0)
   consistencyStreak   Int          @default(0)
   workloadMinutes     Int          @default(0)
-  completionRate      Float        @default(0)
+  overdueTaskRate     Float        @default(0)
   burnoutRisk         Float        @default(0)
   createdAt           DateTime     @default(now())
 }

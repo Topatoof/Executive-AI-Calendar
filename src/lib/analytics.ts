@@ -1,30 +1,30 @@
 import { prisma } from "@/lib/db";
+import { countOverdueTasks } from "@/lib/tasks/overdue";
 import { startOfWeek, subWeeks } from "date-fns";
 
 export async function computeAnalytics(ownerId: string) {
   const now = new Date();
   const weekStart = startOfWeek(now, { weekStartsOn: 1 });
 
-  const [tasks, blocks, missedDeadlines] = await Promise.all([
+  const [tasks, allBlocks, blocks] = await Promise.all([
     prisma.task.findMany({ where: { ownerId } }),
+    prisma.scheduleBlock.findMany({
+      where: { ownerId },
+      include: { task: true },
+    }),
     prisma.scheduleBlock.findMany({
       where: {
         ownerId,
         startTime: { gte: weekStart },
       },
     }),
-    prisma.task.count({
-      where: {
-        ownerId,
-        deadline: { lt: now },
-        status: { in: ["PENDING", "IN_PROGRESS", "MISSED"] },
-      },
-    }),
   ]);
+
+  const missedDeadlines = countOverdueTasks(tasks, allBlocks, now);
 
   const completedTasks = tasks.filter((t) => t.status === "COMPLETED").length;
   const totalTasks = tasks.length;
-  const completionRate = totalTasks > 0 ? completedTasks / totalTasks : 0;
+  const overdueTaskRate = totalTasks > 0 ? missedDeadlines / totalTasks : 0;
 
   const completedBlocks = blocks.filter((b) => b.status === "COMPLETED");
   const missedBlocks = blocks.filter((b) => b.status === "MISSED").length;
@@ -41,7 +41,7 @@ export async function computeAnalytics(ownerId: string) {
     1,
     missedBlocks * 0.15 +
       missedDeadlines * 0.2 +
-      (1 - completionRate) * 0.4 +
+      overdueTaskRate * 0.4 +
       (overloaded ? 0.25 : 0)
   );
 
@@ -49,7 +49,7 @@ export async function computeAnalytics(ownerId: string) {
     where: { ownerId, weekStart: subWeeks(weekStart, 1) },
   });
   const consistencyStreak =
-    completionRate >= 0.6 ? (prevWeek?.consistencyStreak ?? 0) + 1 : 0;
+    overdueTaskRate <= 0.2 ? (prevWeek?.consistencyStreak ?? 0) + 1 : 0;
 
   const existing = await prisma.analyticsSnapshot.findFirst({
     where: { ownerId, weekStart },
@@ -61,7 +61,7 @@ export async function computeAnalytics(ownerId: string) {
     focusMinutes: Math.round(focusMinutes),
     consistencyStreak,
     workloadMinutes: Math.round(workloadMinutes),
-    completionRate,
+    overdueTaskRate,
     burnoutRisk,
   };
 
@@ -79,7 +79,7 @@ export async function computeAnalytics(ownerId: string) {
   return {
     completedTasks,
     totalTasks,
-    completionRate,
+    overdueTaskRate,
     missedDeadlines,
     focusMinutes: Math.round(focusMinutes),
     consistencyStreak,

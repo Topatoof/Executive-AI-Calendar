@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  computeDailyCompletionRate,
   formatPlannerDayHeader,
   groupScheduleBlocksByDay,
   isScheduleBlockCompleted,
+  isScheduleBlockInProgress,
   isScheduleBlockOverdue,
   partitionScheduleBlocks,
+  scheduleBlockRemainingMs,
   sortScheduleBlocks,
   SCHEDULE_OVERDUE_GRACE_MS,
 } from "./sort";
@@ -129,6 +132,41 @@ describe("sortScheduleBlocks", () => {
     expect(parts.completed.map((b) => b.id)).toEqual(["done"]);
   });
 
+  it("computes daily completion rate from today's blocks", () => {
+    const day = new Date("2026-05-28T18:00:00");
+    const result = computeDailyCompletionRate(
+      [
+        block({
+          id: "done",
+          status: "COMPLETED",
+          startTime: new Date("2026-05-28T08:00:00"),
+        }),
+        block({
+          id: "pending",
+          startTime: new Date("2026-05-28T14:00:00"),
+        }),
+        block({
+          id: "other-day",
+          startTime: new Date("2026-05-27T14:00:00"),
+        }),
+      ],
+      day
+    );
+
+    expect(result.totalCount).toBe(2);
+    expect(result.completedCount).toBe(1);
+    expect(result.completionRate).toBe(0.5);
+  });
+
+  it("returns 100% completion when no blocks are scheduled today", () => {
+    expect(
+      computeDailyCompletionRate(
+        [block({ startTime: new Date("2026-05-27T10:00:00") })],
+        new Date("2026-05-28T12:00:00")
+      ).completionRate
+    ).toBe(1);
+  });
+
   it("groups blocks by day within a week range", () => {
     const weekStart = startOfWeek(new Date("2026-05-28"), { weekStartsOn: 1 });
     const weekEnd = endOfWeek(new Date("2026-05-28"), { weekStartsOn: 1 });
@@ -158,6 +196,40 @@ describe("sortScheduleBlocks", () => {
   it("formats today in planner day headers", () => {
     const today = new Date();
     expect(formatPlannerDayHeader(today)).toMatch(/^Today · /);
+  });
+
+  it("detects in-progress blocks by time window", () => {
+    const now = new Date("2026-05-28T15:30:00");
+    expect(
+      isScheduleBlockInProgress(
+        block({
+          startTime: new Date("2026-05-28T15:00:00"),
+          endTime: new Date("2026-05-28T16:00:00"),
+        }),
+        now
+      )
+    ).toBe(true);
+    expect(
+      isScheduleBlockInProgress(
+        block({
+          startTime: new Date("2026-05-28T16:00:00"),
+          endTime: new Date("2026-05-28T17:00:00"),
+        }),
+        now
+      )
+    ).toBe(false);
+  });
+
+  it("computes remaining time until block ends", () => {
+    const now = new Date("2026-05-28T15:30:00");
+    expect(
+      scheduleBlockRemainingMs(
+        block({
+          endTime: new Date("2026-05-28T16:00:00"),
+        }),
+        now
+      )
+    ).toBe(30 * 60 * 1000);
   });
 
   it("detects completed blocks and tasks", () => {

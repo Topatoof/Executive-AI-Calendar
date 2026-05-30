@@ -1,4 +1,11 @@
-import { addDays, format, isSameDay, isToday, startOfDay } from "date-fns";
+import {
+  addDays,
+  endOfDay,
+  format,
+  isSameDay,
+  isToday,
+  startOfDay,
+} from "date-fns";
 import type { ScheduleBlock, Task } from "@prisma/client";
 
 export type ScheduleBlockWithTask = ScheduleBlock & {
@@ -16,6 +23,26 @@ export function isScheduleBlockCompleted(
   return false;
 }
 
+/** Share of today's scheduled blocks marked complete (1 when no blocks today). */
+export function computeDailyCompletionRate(
+  blocks: ScheduleBlockWithTask[],
+  day: Date = new Date()
+): { completionRate: number; completedCount: number; totalCount: number } {
+  const dayStart = startOfDay(day);
+  const dayEnd = endOfDay(day);
+  const dayBlocks = blocks.filter(
+    (b) => b.startTime >= dayStart && b.startTime <= dayEnd
+  );
+  const totalCount = dayBlocks.length;
+  const completedCount = dayBlocks.filter(isScheduleBlockCompleted).length;
+
+  return {
+    completionRate: totalCount > 0 ? completedCount / totalCount : 1,
+    completedCount,
+    totalCount,
+  };
+}
+
 export function isScheduleBlockOverdue(
   block: ScheduleBlockWithTask,
   now: Date = new Date()
@@ -24,6 +51,25 @@ export function isScheduleBlockOverdue(
   if (block.status === "MISSED") return false;
   const overdueAfter = block.endTime.getTime() + SCHEDULE_OVERDUE_GRACE_MS;
   return now.getTime() >= overdueAfter;
+}
+
+/** Block is happening right now (by clock or explicit status). */
+export function isScheduleBlockInProgress(
+  block: ScheduleBlockWithTask,
+  now: Date = new Date()
+): boolean {
+  if (isScheduleBlockCompleted(block)) return false;
+  if (block.status === "MISSED") return false;
+  if (block.status === "IN_PROGRESS") return true;
+  const t = now.getTime();
+  return t >= block.startTime.getTime() && t < block.endTime.getTime();
+}
+
+export function scheduleBlockRemainingMs(
+  block: ScheduleBlockWithTask,
+  now: Date = new Date()
+): number {
+  return Math.max(0, block.endTime.getTime() - now.getTime());
 }
 
 export function partitionScheduleBlocks<T extends ScheduleBlockWithTask>(

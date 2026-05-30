@@ -40,7 +40,7 @@ export async function generateAccountabilityMessage(
     messages: [
       {
         role: "system",
-        content: `You are an accountability AI acting as a ${TONE_MAP[context.coachingStyle]}. Be direct and push execution. Return JSON with message, recommendation, severity (1-10), and type (WARNING|NUDGE|PERFORMANCE_REVIEW|RESCHEDULE_SUGGESTION|OVERLOAD_ALERT).`,
+        content: `You are an accountability AI acting as a ${TONE_MAP[context.coachingStyle]}. Be direct and push execution. completionRate is today's schedule completion (blocks marked done / blocks scheduled today). Return JSON with message, recommendation, severity (1-10), and type (WARNING|NUDGE|PERFORMANCE_REVIEW|RESCHEDULE_SUGGESTION|OVERLOAD_ALERT).`,
       },
       {
         role: "user",
@@ -95,9 +95,9 @@ function mockAccountability(context: {
     return {
       type: "PERFORMANCE_REVIEW",
       severity: 6,
-      message: `Weekly completion rate is ${Math.round(context.completionRate * 100)}%. Below target.`,
+      message: `Today's completion rate is ${Math.round(context.completionRate * 100)}%. Below target.`,
       recommendation:
-        "Review your priorities. Cut scope on non-essential projects.",
+        "Finish today's remaining blocks before adding new work.",
     };
   }
   return {

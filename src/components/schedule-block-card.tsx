@@ -12,7 +12,13 @@ import {
   updateScheduleBlock,
 } from "@/app/actions";
 import type { ScheduleBlock, Task } from "@prisma/client";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import {
+  isScheduleBlockCompleted,
+  isScheduleBlockInProgress,
+  scheduleBlockRemainingMs,
+} from "@/lib/schedule/sort";
+import { formatRemainingMs } from "@/lib/utils";
 
 function toLocalInputValue(date: Date) {
   const year = date.getFullYear();
@@ -34,7 +40,33 @@ export function ScheduleBlockCard({
   const [startTime, setStartTime] = useState(toLocalInputValue(block.startTime));
   const [endTime, setEndTime] = useState(toLocalInputValue(block.endTime));
   const [explanation, setExplanation] = useState(block.explanation ?? "");
+  const [now, setNow] = useState(() => new Date());
   const color = getBlockColor(block.blockType);
+  const inProgress = isScheduleBlockInProgress(block, now);
+  const remainingMs = inProgress ? scheduleBlockRemainingMs(block, now) : 0;
+
+  useEffect(() => {
+    if (isScheduleBlockCompleted(block) || block.status === "MISSED") return;
+
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const tick = () => setNow(new Date());
+
+    const schedule = () => {
+      const current = new Date();
+      const inWindow =
+        block.status === "IN_PROGRESS" ||
+        (current >= block.startTime && current < block.endTime);
+
+      if (current >= block.endTime && block.status !== "IN_PROGRESS") return;
+
+      tick();
+      timeoutId = setTimeout(schedule, inWindow ? 1000 : 30_000);
+    };
+
+    schedule();
+    return () => clearTimeout(timeoutId);
+  }, [block.id, block.startTime, block.endTime, block.status]);
 
   const saveEdit = () =>
     startTransition(async () => {
@@ -56,16 +88,30 @@ export function ScheduleBlockCard({
 
   return (
     <div
-      className="rounded-lg border p-4"
+      className={`rounded-lg border p-4 transition-shadow ${
+        inProgress ? "border-primary bg-primary/5 ring-2 ring-primary ring-offset-2 ring-offset-background" : ""
+      }`}
       style={{ borderLeftWidth: 4, borderLeftColor: color }}
     >
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="font-medium">{block.title}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-medium">{block.title}</p>
+            {inProgress && (
+              <Badge className="animate-pulse bg-primary text-primary-foreground">
+                In progress
+              </Badge>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground">
             {format(block.startTime, "EEE h:mm a")} –{" "}
             {format(block.endTime, "h:mm a")}
           </p>
+          {inProgress && (
+            <p className="mt-1 text-sm font-medium tabular-nums text-primary">
+              {formatRemainingMs(remainingMs)}
+            </p>
+          )}
           {block.explanation && (
             <p className="mt-1 text-xs text-muted-foreground">
               {block.explanation}

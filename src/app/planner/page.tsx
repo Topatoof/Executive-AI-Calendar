@@ -45,17 +45,11 @@ export default async function PlannerPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {blocks.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No schedule yet. Add tasks via Brain Dump, then generate a plan.
-            </p>
-          ) : (
-            <PlannerScheduleByDay
-              blocks={blocks}
-              weekStart={weekStart}
-              weekEnd={weekEnd}
-            />
-          )}
+          <PlannerScheduleByDay
+            blocks={blocks}
+            weekStart={weekStart}
+            weekEnd={weekEnd}
+          />
         </CardContent>
       </Card>
     </div>

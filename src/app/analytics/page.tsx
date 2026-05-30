@@ -38,9 +38,10 @@ export default async function AnalyticsPage() {
 
       <div className="grid gap-4 md:grid-cols-3">
         <MetricCard
-          title="Completion Rate"
-          value={`${Math.round(analytics.completionRate * 100)}%`}
-          desc="Tasks completed vs total"
+          title="Overdue Task Rate"
+          value={`${Math.round(analytics.overdueTaskRate * 100)}%`}
+          desc={`${analytics.missedDeadlines} of ${analytics.totalTasks} incomplete tasks overdue`}
+          warn={analytics.overdueTaskRate > 0.2}
         />
         <MetricCard
           title="Focus Time"
@@ -60,12 +61,12 @@ export default async function AnalyticsPage() {
         <MetricCard
           title="Missed Deadlines"
           value={String(analytics.missedDeadlines)}
-          desc="Overdue incomplete tasks"
+          desc="Past deadline or schedule block not marked done"
         />
         <MetricCard
           title="Consistency Streak"
           value={`${analytics.consistencyStreak} weeks`}
-          desc="Weeks above 60% completion"
+          desc="Weeks at or below 20% overdue"
         />
         <MetricCard
           title="Workload"
@@ -77,21 +78,21 @@ export default async function AnalyticsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Weekly Trend</CardTitle>
-          <CardDescription>Completion rate by week</CardDescription>
+          <CardDescription>Overdue task rate by week</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-end gap-2 h-32">
             {snapshots.reverse().map((s) => (
               <div key={s.id} className="flex flex-1 flex-col items-center gap-1">
                 <div
-                  className="w-full rounded-t bg-primary"
+                  className={`w-full rounded-t ${s.overdueTaskRate > 0.2 ? "bg-destructive" : "bg-primary"}`}
                   style={{
-                    height: `${Math.max(8, s.completionRate * 100)}%`,
+                    height: `${Math.max(8, s.overdueTaskRate * 100)}%`,
                     minHeight: 8,
                   }}
                 />
                 <span className="text-[10px] text-muted-foreground">
-                  {Math.round(s.completionRate * 100)}%
+                  {Math.round(s.overdueTaskRate * 100)}%
                 </span>
               </div>
             ))}

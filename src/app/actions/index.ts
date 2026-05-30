@@ -10,8 +10,9 @@ import {
 } from "@/lib/scheduler/engine";
 import { generateAccountabilityMessage } from "@/lib/ai/accountability";
 import { computeAnalytics } from "@/lib/analytics";
-import type { TaskPriority } from "@prisma/client";
+import type { BlockType, TaskPriority } from "@prisma/client";
 import { endOfDay, startOfDay } from "date-fns";
+import { computeDailyCompletionRate } from "@/lib/schedule/sort";
 import type { ExtractionResult } from "@/lib/ai/schemas";
 import {
   applyProjectMatching,
@@ -20,6 +21,7 @@ import {
   normalizeProjectTitle,
   resolveProjectId,
 } from "@/lib/project-match";
+import { filterOverdueTasks } from "@/lib/tasks/overdue";
 import { normalizeExtractionDeadlines } from "@/lib/ai/normalize-extraction";
 import { parseDeadline } from "@/lib/dates";
 import { getPlannerViewRange, getWeeklyScheduleRange } from "@/lib/planner-horizon";
@@ -288,6 +290,41 @@ export async function updateBlockStatus(
   revalidatePath("/analytics");
 }
 
+export async function createScheduleBlock(data: {
+  title: string;
+  startTime: string;
+  endTime: string;
+  blockType?: BlockType;
+  explanation?: string;
+}) {
+  const owner = await getOrCreateOwner();
+  const startTime = new Date(data.startTime);
+  const endTime = new Date(data.endTime);
+
+  if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime())) {
+    throw new Error("Invalid start or end time.");
+  }
+  if (endTime <= startTime) {
+    throw new Error("End time must be after start time.");
+  }
+
+  await prisma.scheduleBlock.create({
+    data: {
+      ownerId: owner.id,
+      title: data.title.trim() || "Untitled block",
+      startTime,
+      endTime,
+      blockType: data.blockType ?? "DEEP_WORK",
+      explanation: data.explanation?.trim() || null,
+    },
+  });
+
+  revalidatePath("/planner");
+  revalidatePath("/dashboard");
+  revalidatePath("/calendar");
+  revalidatePath("/analytics");
+}
+
 export async function updateScheduleBlock(data: {
   blockId: string;
   title: string;
@@ -361,20 +398,32 @@ export async function runAccountabilityCheck() {
   const owner = await getOrCreateOwner();
   const analytics = await computeAnalytics(owner.id);
 
-  const overdueTasks = await prisma.task.findMany({
-    where: {
-      ownerId: owner.id,
-      deadline: { lt: new Date() },
-      status: { in: ["PENDING", "IN_PROGRESS"] },
-    },
-    take: 5,
-  });
+  const todayStart = startOfDay(new Date());
+  const todayEnd = endOfDay(new Date());
+
+  const [allTasks, allBlocks, todayBlocks] = await Promise.all([
+    prisma.task.findMany({ where: { ownerId: owner.id } }),
+    prisma.scheduleBlock.findMany({
+      where: { ownerId: owner.id },
+      include: { task: true },
+    }),
+    prisma.scheduleBlock.findMany({
+      where: {
+        ownerId: owner.id,
+        startTime: { gte: todayStart, lte: todayEnd },
+      },
+      include: { task: true },
+    }),
+  ]);
+
+  const overdueTasks = filterOverdueTasks(allTasks, allBlocks).slice(0, 5);
+  const { completionRate } = computeDailyCompletionRate(todayBlocks);
 
   const output = await generateAccountabilityMessage({
     coachingStyle: owner.coachingStyle,
     overdueTasks: overdueTasks.map((t) => t.title),
     missedBlocks: analytics.missedBlocks,
-    completionRate: analytics.completionRate,
+    completionRate,
     overloaded: analytics.overloaded,
     behindProjects: [],
   });

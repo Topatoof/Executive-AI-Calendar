@@ -9,7 +9,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   ScheduleBlockList,
@@ -20,14 +19,14 @@ import { formatDuration } from "@/lib/utils";
 import { startOfDay, endOfDay } from "date-fns";
 import Link from "next/link";
 import type { ComponentType } from "react";
-import { AlertTriangle, CheckCircle2, Clock, Target } from "lucide-react";
+import { AlertTriangle, Clock, Target } from "lucide-react";
 
 export default async function DashboardPage() {
   const owner = await getOrCreateOwner();
   const todayStart = startOfDay(new Date());
   const todayEnd = endOfDay(new Date());
 
-  const [blocks, alerts, overdueTasks, analytics] = await Promise.all([
+  const [blocks, allBlocks, alerts, analytics] = await Promise.all([
     prisma.scheduleBlock.findMany({
       where: {
         ownerId: owner.id,
@@ -36,23 +35,20 @@ export default async function DashboardPage() {
       include: { task: true },
       orderBy: { startTime: "asc" },
     }),
+    prisma.scheduleBlock.findMany({
+      where: { ownerId: owner.id },
+      include: { task: true },
+      orderBy: { startTime: "asc" },
+    }),
     prisma.accountabilityEvent.findMany({
       where: { ownerId: owner.id, acknowledged: false },
       orderBy: { createdAt: "desc" },
       take: 3,
     }),
-    prisma.task.findMany({
-      where: {
-        ownerId: owner.id,
-        deadline: { lt: new Date() },
-        status: { in: ["PENDING", "IN_PROGRESS", "MISSED"] },
-      },
-      take: 5,
-    }),
     computeAnalytics(owner.id),
   ]);
 
-  const { overdue: overdueBlocks } = partitionScheduleBlocks(blocks);
+  const { overdue: overdueBlocks } = partitionScheduleBlocks(allBlocks);
 
   return (
     <div className="space-y-6">
@@ -95,9 +91,11 @@ export default async function DashboardPage() {
 
       <div className="grid gap-4 md:grid-cols-4">
         <StatCard
-          icon={CheckCircle2}
-          label="Completion Rate"
-          value={`${Math.round(analytics.completionRate * 100)}%`}
+          icon={AlertTriangle}
+          label="Overdue Task Rate"
+          value={`${Math.round(analytics.overdueTaskRate * 100)}%`}
+          detail={`${analytics.missedDeadlines} of ${analytics.totalTasks} incomplete tasks overdue`}
+          warn={analytics.overdueTaskRate > 0.2}
         />
         <StatCard
           icon={Clock}
@@ -147,43 +145,14 @@ export default async function DashboardPage() {
           <CardHeader>
             <CardTitle>Overdue</CardTitle>
             <CardDescription>
-              Tasks past deadline and schedule blocks not marked done
+              All schedule blocks not marked done
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {overdueTasks.length === 0 && overdueBlocks.length === 0 ? (
+          <CardContent>
+            {overdueBlocks.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nothing overdue.</p>
             ) : (
-              <>
-                {overdueTasks.length > 0 && (
-                  <div className="space-y-2">
-                    {overdueTasks.length > 0 && overdueBlocks.length > 0 && (
-                      <p className="text-xs font-medium text-muted-foreground">
-                        Tasks
-                      </p>
-                    )}
-                    {overdueTasks.map((t) => (
-                      <div
-                        key={t.id}
-                        className="flex items-center justify-between rounded-lg border p-3"
-                      >
-                        <span className="text-sm font-medium">{t.title}</span>
-                        <Badge variant="destructive">{t.priority}</Badge>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {overdueBlocks.length > 0 && (
-                  <div className="space-y-2">
-                    {overdueTasks.length > 0 && (
-                      <p className="text-xs font-medium text-muted-foreground">
-                        Schedule blocks
-                      </p>
-                    )}
-                    <ScheduleBlockOverdueList blocks={blocks} />
-                  </div>
-                )}
-              </>
+              <ScheduleBlockOverdueList blocks={allBlocks} />
             )}
           </CardContent>
         </Card>
@@ -196,11 +165,13 @@ function StatCard({
   icon: Icon,
   label,
   value,
+  detail,
   warn,
 }: {
   icon: ComponentType<{ className?: string }>;
   label: string;
   value: string;
+  detail?: string;
   warn?: boolean;
 }) {
   return (
@@ -212,6 +183,9 @@ function StatCard({
         <div>
           <p className="text-xs text-muted-foreground">{label}</p>
           <p className="text-lg font-semibold">{value}</p>
+          {detail && (
+            <p className="text-xs text-muted-foreground">{detail}</p>
+          )}
         </div>
       </CardContent>
     </Card>
