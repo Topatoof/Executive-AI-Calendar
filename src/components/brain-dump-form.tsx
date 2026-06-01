@@ -204,7 +204,6 @@ export function BrainDumpForm() {
             | (Omit<PlacedSticker, "x" | "y"> & { left?: string; top?: string })
           >;
         };
-        setAssets(parsed.assets ?? []);
         const migrated = (parsed.placed ?? []).map((s) => {
           if ("x" in s && "y" in s) return s;
           const legacy = s as Omit<PlacedSticker, "x" | "y"> & {
@@ -223,7 +222,11 @@ export function BrainDumpForm() {
               : Number((legacy.top || "0").replace("px", "")) || 0;
           return { ...legacy, x, y };
         }) as PlacedSticker[];
-        setPlaced(migrated);
+        const validAssets = parsed.assets ?? [];
+        setAssets(validAssets);
+        setPlaced(
+          migrated.filter((s) => validAssets.some((a) => a.id === s.assetId))
+        );
       }
     } catch {
       localStorage.removeItem(STICKER_STORAGE_KEY);
@@ -235,6 +238,13 @@ export function BrainDumpForm() {
   useEffect(() => {
     if (!stickersHydrated) return;
     try {
+      const raw = localStorage.getItem(STICKER_STORAGE_KEY);
+      if (assets.length === 0 && placed.length === 0 && raw) {
+        const parsed = JSON.parse(raw) as { assets?: unknown[]; placed?: unknown[] };
+        if ((parsed.assets?.length ?? 0) > 0 || (parsed.placed?.length ?? 0) > 0) {
+          return;
+        }
+      }
       localStorage.setItem(STICKER_STORAGE_KEY, JSON.stringify({ assets, placed }));
       if (stickerError?.includes("storage")) setStickerError(null);
     } catch {
@@ -493,6 +503,10 @@ export function BrainDumpForm() {
           {stickerError && (
             <p className="text-sm text-destructive">{stickerError}</p>
           )}
+          <p className="text-xs text-muted-foreground">
+            Stickers are saved in this browser only (not your account). Use the
+            same URL each time — e.g. http://127.0.0.1:3000.
+          </p>
           <p className="text-xs text-muted-foreground">
             Tip: drag stickers with your mouse to reposition. Double-click a placed
             sticker to remove it.

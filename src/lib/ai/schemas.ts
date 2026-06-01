@@ -63,3 +63,46 @@ export const accountabilitySchema = z.object({
 });
 
 export type AccountabilityOutput = z.infer<typeof accountabilitySchema>;
+
+export const scheduleChangeItemSchema = z.object({
+  action: z.enum(["clear_day", "move", "cancel", "mark_missed"]),
+  blockTitleContains: z.string().optional(),
+  sourceDate: z.string().nullable().optional(),
+  targetDate: z.string().nullable().optional(),
+  targetStartHour: z.coerce.number().int().min(0).max(23).optional(),
+  notes: z.string().optional(),
+});
+
+export const scheduleChangePlanSchema = z.object({
+  summary: z.string().default("Schedule adjustment plan."),
+  warnings: z
+    .array(
+      z.preprocess(
+        (value) =>
+          typeof value === "string" ? value : JSON.stringify(value, null, 2),
+        z.string()
+      )
+    )
+    .default([]),
+  changes: z.array(scheduleChangeItemSchema).default([]),
+});
+
+export type ScheduleChangeItem = z.infer<typeof scheduleChangeItemSchema>;
+export type ScheduleChangePlan = z.infer<typeof scheduleChangePlanSchema>;
+
+export const resolvedScheduleChangeSchema = z.object({
+  action: z.enum(["clear_day", "move", "cancel", "mark_missed"]),
+  item: scheduleChangeItemSchema,
+  description: z.string(),
+  blockIds: z.array(z.string()),
+  skipped: z.boolean().default(false),
+  skipReason: z.string().optional(),
+});
+
+export const scheduleChangePreviewSchema = z.object({
+  plan: scheduleChangePlanSchema,
+  resolved: z.array(resolvedScheduleChangeSchema),
+});
+
+export type ScheduleChangePreview = z.infer<typeof scheduleChangePreviewSchema>;
+export type ResolvedScheduleChange = z.infer<typeof resolvedScheduleChangeSchema>;

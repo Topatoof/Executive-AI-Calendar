@@ -1,4 +1,4 @@
-import { BrainDumpForm } from "@/components/brain-dump-form";
+import { BrainDumpPanel } from "@/components/brain-dump-panel";
 
 export default function BrainDumpPage() {
   return (
@@ -6,10 +6,11 @@ export default function BrainDumpPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Brain Dump</h1>
         <p className="text-muted-foreground">
-          Dump everything. AI extracts tasks, deadlines, and priorities.
+          Capture new tasks or tell the app how to adjust your existing planner
+          schedule when plans change.
         </p>
       </div>
-      <BrainDumpForm />
+      <BrainDumpPanel />
     </div>
   );
 }

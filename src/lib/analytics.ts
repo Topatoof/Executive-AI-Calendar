@@ -1,6 +1,74 @@
 import { prisma } from "@/lib/db";
 import { countOverdueTasks } from "@/lib/tasks/overdue";
-import { startOfWeek, subWeeks } from "date-fns";
+import {
+  eachDayOfInterval,
+  endOfDay,
+  endOfWeek,
+  format,
+  isWithinInterval,
+  startOfDay,
+  startOfWeek,
+  subWeeks,
+} from "date-fns";
+
+export type DailyWorkMinutes = {
+  date: string;
+  label: string;
+  minutes: number;
+};
+
+function blockDurationMinutes(block: {
+  startTime: Date;
+  endTime: Date;
+}): number {
+  return Math.round(
+    (block.endTime.getTime() - block.startTime.getTime()) / (1000 * 60)
+  );
+}
+
+/** Completed schedule block time per calendar day (by block start day, Mon–Sun). */
+export function bucketWorkMinutesByDay(
+  blocks: { startTime: Date; endTime: Date }[],
+  weekStart: Date,
+  weekEnd: Date
+): DailyWorkMinutes[] {
+  const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
+
+  return days.map((day) => {
+    const dayStart = startOfDay(day);
+    const dayEnd = endOfDay(day);
+    const minutes = blocks
+      .filter((b) =>
+        isWithinInterval(b.startTime, { start: dayStart, end: dayEnd })
+      )
+      .reduce((sum, b) => sum + blockDurationMinutes(b), 0);
+
+    return {
+      date: format(day, "yyyy-MM-dd"),
+      label: format(day, "EEE"),
+      minutes,
+    };
+  });
+}
+
+export async function getWeeklyDailyWorkMinutes(
+  ownerId: string,
+  referenceDate: Date = new Date()
+): Promise<DailyWorkMinutes[]> {
+  const weekStart = startOfWeek(referenceDate, { weekStartsOn: 1 });
+  const weekEnd = endOfWeek(referenceDate, { weekStartsOn: 1 });
+
+  const blocks = await prisma.scheduleBlock.findMany({
+    where: {
+      ownerId,
+      status: "COMPLETED",
+      startTime: { gte: weekStart, lte: weekEnd },
+    },
+    select: { startTime: true, endTime: true },
+  });
+
+  return bucketWorkMinutesByDay(blocks, weekStart, weekEnd);
+}
 
 export async function computeAnalytics(ownerId: string) {
   const now = new Date();

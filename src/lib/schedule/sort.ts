@@ -43,11 +43,40 @@ export function computeDailyCompletionRate(
   };
 }
 
+/** Bulk shift penalty: only yesterday → today counts overdue; other shifted today/tomorrow blocks are graced. */
+export function isShiftPenaltyOverdue(
+  block: ScheduleBlockWithTask,
+  now: Date = new Date()
+): boolean | null {
+  if (block.shiftedFromDay == null) return null;
+
+  const today = startOfDay(now);
+  const yesterday = addDays(today, -1);
+  const tomorrow = addDays(today, 1);
+  const blockDay = startOfDay(block.startTime);
+  const fromDay = startOfDay(block.shiftedFromDay);
+
+  const onTodayOrTomorrow =
+    isSameDay(blockDay, today) || isSameDay(blockDay, tomorrow);
+  if (!onTodayOrTomorrow) return null;
+
+  if (isSameDay(blockDay, today) && isSameDay(fromDay, yesterday)) {
+    return true;
+  }
+
+  return false;
+}
+
 export function isScheduleBlockOverdue(
   block: ScheduleBlockWithTask,
   now: Date = new Date()
 ): boolean {
   if (isScheduleBlockCompleted(block)) return false;
+
+  const shiftRule = isShiftPenaltyOverdue(block, now);
+  if (shiftRule === true) return true;
+  if (shiftRule === false) return false;
+
   if (block.status === "MISSED") return false;
   const overdueAfter = block.endTime.getTime() + SCHEDULE_OVERDUE_GRACE_MS;
   return now.getTime() >= overdueAfter;

@@ -1,6 +1,12 @@
 import { getOrCreateOwner } from "@/lib/owner";
-import { computeAnalytics } from "@/lib/analytics";
+import {
+  computeAnalytics,
+  getWeeklyDailyWorkMinutes,
+} from "@/lib/analytics";
 import { prisma } from "@/lib/db";
+import { DailyWorkLineChart } from "@/components/daily-work-line-chart";
+import { Button } from "@/components/ui/button";
+import { addWeeks, endOfWeek, format, startOfWeek } from "date-fns";
 import {
   Card,
   CardContent,
@@ -9,16 +15,46 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { formatDuration } from "@/lib/utils";
+import Link from "next/link";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
-export default async function AnalyticsPage() {
+function parseWeekParam(value?: string): Date {
+  if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split("-").map(Number);
+    const parsed = new Date(year, month - 1, day, 12);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return new Date();
+}
+
+function weekAnalyticsHref(weekStart: Date, currentWeekStart: Date) {
+  if (
+    format(weekStart, "yyyy-MM-dd") === format(currentWeekStart, "yyyy-MM-dd")
+  ) {
+    return "/analytics";
+  }
+  return `/analytics?week=${format(weekStart, "yyyy-MM-dd")}`;
+}
+
+export default async function AnalyticsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ week?: string }>;
+}) {
+  const { week: weekParam } = await searchParams;
   const owner = await getOrCreateOwner();
-  const analytics = await computeAnalytics(owner.id);
+  const now = new Date();
+  const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
+  const referenceDate = parseWeekParam(weekParam);
+  const weekStart = startOfWeek(referenceDate, { weekStartsOn: 1 });
+  const weekEnd = endOfWeek(referenceDate, { weekStartsOn: 1 });
+  const isCurrentWeek =
+    format(weekStart, "yyyy-MM-dd") === format(currentWeekStart, "yyyy-MM-dd");
 
-  const snapshots = await prisma.analyticsSnapshot.findMany({
-    where: { ownerId: owner.id },
-    orderBy: { weekStart: "desc" },
-    take: 8,
-  });
+  const [analytics, dailyWork] = await Promise.all([
+    computeAnalytics(owner.id),
+    getWeeklyDailyWorkMinutes(owner.id, referenceDate),
+  ]);
 
   const categoryBreakdown = await prisma.task.groupBy({
     by: ["category"],
@@ -77,31 +113,57 @@ export default async function AnalyticsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Weekly Trend</CardTitle>
-          <CardDescription>Overdue task rate by week</CardDescription>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 space-y-1">
+              <CardTitle>
+                {isCurrentWeek
+                  ? "This week"
+                  : `Week of ${format(weekStart, "MMM d, yyyy")}`}
+              </CardTitle>
+              <CardDescription>
+                Hours & minutes worked per day ·{" "}
+                {format(weekStart, "MMM d")} – {format(weekEnd, "MMM d, yyyy")}
+              </CardDescription>
+            </div>
+            <div className="flex shrink-0 gap-1">
+              <Button variant="outline" size="icon" asChild>
+                <Link
+                  href={weekAnalyticsHref(
+                    addWeeks(weekStart, -1),
+                    currentWeekStart
+                  )}
+                  aria-label="Previous week"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Link>
+              </Button>
+              {isCurrentWeek ? (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  disabled
+                  aria-label="Next week"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button variant="outline" size="icon" asChild>
+                  <Link
+                    href={weekAnalyticsHref(
+                      addWeeks(weekStart, 1),
+                      currentWeekStart
+                    )}
+                    aria-label="Next week"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              )}
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="flex items-end gap-2 h-32">
-            {snapshots.reverse().map((s) => (
-              <div key={s.id} className="flex flex-1 flex-col items-center gap-1">
-                <div
-                  className={`w-full rounded-t ${s.overdueTaskRate > 0.2 ? "bg-destructive" : "bg-primary"}`}
-                  style={{
-                    height: `${Math.max(8, s.overdueTaskRate * 100)}%`,
-                    minHeight: 8,
-                  }}
-                />
-                <span className="text-[10px] text-muted-foreground">
-                  {Math.round(s.overdueTaskRate * 100)}%
-                </span>
-              </div>
-            ))}
-            {snapshots.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                Complete tasks to build history.
-              </p>
-            )}
-          </div>
+          <DailyWorkLineChart data={dailyWork} />
         </CardContent>
       </Card>
 

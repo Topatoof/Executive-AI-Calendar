@@ -29,6 +29,7 @@ function block(
     endTime: new Date("2026-05-28T11:00:00"),
     explanation: null,
     rescheduleCount: 0,
+    shiftedFromDay: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     task: task ?? null,
@@ -84,6 +85,44 @@ describe("sortScheduleBlocks", () => {
     ]);
 
     expect(sorted.map((b) => b.id)).toEqual(["pending", "via-task"]);
+  });
+
+  it("applies shift penalty only for yesterday to today", () => {
+    const now = new Date("2026-05-30T15:00:00");
+    const yesterday = new Date("2026-05-29T12:00:00");
+
+    expect(
+      isScheduleBlockOverdue(
+        block({
+          startTime: new Date("2026-05-30T10:00:00"),
+          endTime: new Date("2026-05-30T11:00:00"),
+          shiftedFromDay: yesterday,
+        }),
+        now
+      )
+    ).toBe(true);
+
+    expect(
+      isScheduleBlockOverdue(
+        block({
+          startTime: new Date("2026-05-30T10:00:00"),
+          endTime: new Date("2026-05-28T11:00:00"),
+          shiftedFromDay: new Date("2026-05-28T12:00:00"),
+        }),
+        now
+      )
+    ).toBe(false);
+
+    expect(
+      isScheduleBlockOverdue(
+        block({
+          startTime: new Date("2026-05-31T10:00:00"),
+          endTime: new Date("2026-05-28T11:00:00"),
+          shiftedFromDay: yesterday,
+        }),
+        now
+      )
+    ).toBe(false);
   });
 
   it("marks blocks overdue one hour after end time", () => {

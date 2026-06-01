@@ -171,6 +171,8 @@ model ScheduleBlock {
   endTime         DateTime
   explanation     String?
   rescheduleCount Int          @default(0)
+  /** Calendar day (UTC midnight) block was on before last bulk +1 day shift; drives shift overdue rules. */
+  shiftedFromDay  DateTime?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 }

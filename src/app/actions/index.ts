@@ -11,9 +11,14 @@ import {
 import { generateAccountabilityMessage } from "@/lib/ai/accountability";
 import { computeAnalytics } from "@/lib/analytics";
 import type { BlockType, TaskPriority } from "@prisma/client";
-import { endOfDay, startOfDay } from "date-fns";
+import { addDays, endOfDay, format, isSameDay, startOfDay } from "date-fns";
 import { computeDailyCompletionRate } from "@/lib/schedule/sort";
-import type { ExtractionResult } from "@/lib/ai/schemas";
+import type { ExtractionResult, ScheduleChangePreview } from "@/lib/ai/schemas";
+import { planScheduleChanges } from "@/lib/ai/schedule-change";
+import {
+  applyScheduleChangePreview,
+  resolveScheduleChangePlan,
+} from "@/lib/schedule/apply-changes";
 import {
   applyProjectMatching,
   buildProjectTitleMap,
@@ -25,6 +30,53 @@ import { filterOverdueTasks } from "@/lib/tasks/overdue";
 import { normalizeExtractionDeadlines } from "@/lib/ai/normalize-extraction";
 import { parseDeadline } from "@/lib/dates";
 import { getPlannerViewRange, getWeeklyScheduleRange } from "@/lib/planner-horizon";
+import { shouldShiftBlockOnDay } from "@/lib/schedule/shift";
+
+export async function previewScheduleChanges(
+  instructions: string
+): Promise<ScheduleChangePreview> {
+  const owner = await getOrCreateOwner();
+  const now = new Date();
+  const { viewStart, viewEnd } = getPlannerViewRange(now);
+
+  const blocks = await prisma.scheduleBlock.findMany({
+    where: {
+      ownerId: owner.id,
+      startTime: { gte: viewStart, lte: viewEnd },
+    },
+    include: { task: true },
+    orderBy: { startTime: "asc" },
+  });
+
+  const context = blocks.map((b) => ({
+    id: b.id,
+    title: b.title,
+    startTime: b.startTime.toISOString(),
+    endTime: b.endTime.toISOString(),
+    dayLabel: format(b.startTime, "EEEE, MMM d"),
+    status: b.status,
+  }));
+
+  const plan = await planScheduleChanges(
+    instructions,
+    format(now, "yyyy-MM-dd"),
+    context
+  );
+
+  return resolveScheduleChangePlan(plan, blocks);
+}
+
+export async function applyScheduleChanges(preview: ScheduleChangePreview) {
+  const owner = await getOrCreateOwner();
+  const result = await applyScheduleChangePreview(owner, preview);
+
+  revalidatePath("/planner");
+  revalidatePath("/dashboard");
+  revalidatePath("/calendar");
+  revalidatePath("/analytics");
+
+  return result;
+}
 
 export async function submitBrainDump(content: string) {
   const owner = await getOrCreateOwner();
@@ -323,6 +375,57 @@ export async function createScheduleBlock(data: {
   revalidatePath("/dashboard");
   revalidatePath("/calendar");
   revalidatePath("/analytics");
+}
+
+/** Move every block in the planner horizon forward one day; applies shift overdue rules. */
+export async function shiftPlannerScheduleByOneDay() {
+  const owner = await getOrCreateOwner();
+  const now = new Date();
+  const { viewStart, viewEnd } = getPlannerViewRange(now);
+
+  const blocks = await prisma.scheduleBlock.findMany({
+    where: {
+      ownerId: owner.id,
+      startTime: { gte: viewStart, lte: viewEnd },
+    },
+    include: { task: true },
+  });
+
+  let shifted = 0;
+
+  for (const block of blocks) {
+    const oldDay = startOfDay(block.startTime);
+    if (!shouldShiftBlockOnDay(oldDay, now)) continue;
+
+    await prisma.scheduleBlock.update({
+      where: { id: block.id },
+      data: {
+        startTime: addDays(block.startTime, 1),
+        endTime: addDays(block.endTime, 1),
+        shiftedFromDay: oldDay,
+        rescheduleCount: { increment: 1 },
+      },
+    });
+
+    if (block.taskId && block.task?.scheduledDate) {
+      const taskDay = startOfDay(block.task.scheduledDate);
+      if (isSameDay(taskDay, oldDay)) {
+        await prisma.task.update({
+          where: { id: block.taskId },
+          data: { scheduledDate: addDays(taskDay, 1) },
+        });
+      }
+    }
+
+    shifted += 1;
+  }
+
+  revalidatePath("/planner");
+  revalidatePath("/dashboard");
+  revalidatePath("/calendar");
+  revalidatePath("/analytics");
+
+  return { shifted };
 }
 
 export async function updateScheduleBlock(data: {
