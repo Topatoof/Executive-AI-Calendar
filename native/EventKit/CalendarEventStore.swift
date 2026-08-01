@@ -2,7 +2,7 @@ import EventKit
 import Foundation
 
 /// Errors thrown by ``CalendarEventStore``.
-enum CalendarStoreError: LocalizedError {
+public enum CalendarStoreError: LocalizedError, Sendable {
   case accessDenied
   case accessRestricted
   case eventNotFound(identifier: String)
@@ -10,7 +10,7 @@ enum CalendarStoreError: LocalizedError {
   case saveFailed(underlying: Error)
   case removeFailed(underlying: Error)
 
-  var errorDescription: String? {
+  public var errorDescription: String? {
     switch self {
     case .accessDenied:
       return "Calendar access was denied. Enable it in System Settings / Settings."
@@ -29,17 +29,17 @@ enum CalendarStoreError: LocalizedError {
 }
 
 /// Lightweight value type for listing or editing events without holding `EKEvent` references.
-struct CalendarEventDraft: Sendable, Equatable {
-  var eventIdentifier: String?
-  var title: String
-  var startDate: Date
-  var endDate: Date
-  var notes: String?
-  var location: String?
-  var isAllDay: Bool
-  var calendarIdentifier: String?
+public struct CalendarEventDraft: Sendable, Equatable {
+  public var eventIdentifier: String?
+  public var title: String
+  public var startDate: Date
+  public var endDate: Date
+  public var notes: String?
+  public var location: String?
+  public var isAllDay: Bool
+  public var calendarIdentifier: String?
 
-  init(
+  public init(
     eventIdentifier: String? = nil,
     title: String,
     startDate: Date,
@@ -59,7 +59,7 @@ struct CalendarEventDraft: Sendable, Equatable {
     self.calendarIdentifier = calendarIdentifier
   }
 
-  init(event: EKEvent) {
+  public init(event: EKEvent) {
     self.eventIdentifier = event.eventIdentifier
     self.title = event.title ?? ""
     self.startDate = event.startDate
@@ -73,18 +73,20 @@ struct CalendarEventDraft: Sendable, Equatable {
 
 /// Thread-safe wrapper around `EKEventStore` for requesting access and
 /// reading, creating, or modifying calendar events.
-actor CalendarEventStore {
+public actor CalendarEventStore {
   private let store = EKEventStore()
+
+  public init() {}
 
   // MARK: - Authorization
 
   /// Current EventKit authorization status for calendar events.
-  nonisolated func authorizationStatus() -> EKAuthorizationStatus {
+  public nonisolated func authorizationStatus() -> EKAuthorizationStatus {
     EKEventStore.authorizationStatus(for: .event)
   }
 
   /// Whether the app currently has permission to read/write events.
-  nonisolated var hasAccess: Bool {
+  public nonisolated var hasAccess: Bool {
     switch authorizationStatus() {
     case .fullAccess, .authorized:
       return true
@@ -96,7 +98,7 @@ actor CalendarEventStore {
   /// Requests calendar event access. Uses full-access APIs on iOS 17+ / macOS 14+,
   /// with a fallback to the legacy `requestAccess(to:)` API on older systems.
   @discardableResult
-  func requestAccess() async throws -> Bool {
+  public func requestAccess() async throws -> Bool {
     let status = authorizationStatus()
     switch status {
     case .fullAccess, .authorized:
@@ -141,13 +143,13 @@ actor CalendarEventStore {
   // MARK: - Calendars
 
   /// Calendars the user can write events into.
-  func writableCalendars() throws -> [EKCalendar] {
+  public func writableCalendars() throws -> [EKCalendar] {
     try ensureAccess()
     return store.calendars(for: .event).filter(\.allowsContentModifications)
   }
 
   /// Default calendar for new events, or the first writable calendar.
-  func defaultWritableCalendar() throws -> EKCalendar {
+  public func defaultWritableCalendar() throws -> EKCalendar {
     try ensureAccess()
     if let preferred = store.defaultCalendarForNewEvents,
        preferred.allowsContentModifications
@@ -164,7 +166,7 @@ actor CalendarEventStore {
 
   /// Fetches events that intersect `[start, end)`.
   /// - Parameter calendars: Optional subset of calendars; `nil` means all event calendars.
-  func fetchEvents(
+  public func fetchEvents(
     from start: Date,
     to end: Date,
     calendars: [EKCalendar]? = nil
@@ -181,7 +183,7 @@ actor CalendarEventStore {
   }
 
   /// Loads a single event by its persistent identifier.
-  func event(identifier: String) throws -> CalendarEventDraft {
+  public func event(identifier: String) throws -> CalendarEventDraft {
     try ensureAccess()
     guard let event = store.event(withIdentifier: identifier) else {
       throw CalendarStoreError.eventNotFound(identifier: identifier)
@@ -193,7 +195,7 @@ actor CalendarEventStore {
 
   /// Creates and saves a new calendar event. Returns the saved draft (with identifier).
   @discardableResult
-  func createEvent(_ draft: CalendarEventDraft) throws -> CalendarEventDraft {
+  public func createEvent(_ draft: CalendarEventDraft) throws -> CalendarEventDraft {
     try ensureAccess()
 
     let event = EKEvent(eventStore: store)
@@ -222,7 +224,7 @@ actor CalendarEventStore {
   /// Updates an existing event identified by `draft.eventIdentifier`.
   /// - Parameter span: Use `.futureEvents` to apply changes to a recurring series from this occurrence forward.
   @discardableResult
-  func updateEvent(
+  public func updateEvent(
     _ draft: CalendarEventDraft,
     span: EKSpan = .thisEvent
   ) throws -> CalendarEventDraft {
@@ -255,7 +257,7 @@ actor CalendarEventStore {
   }
 
   /// Deletes an event by identifier.
-  func deleteEvent(
+  public func deleteEvent(
     identifier: String,
     span: EKSpan = .thisEvent
   ) throws {

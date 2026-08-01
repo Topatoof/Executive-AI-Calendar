@@ -4,8 +4,8 @@ import Foundation
 /// Example call sites for ``CalendarEventStore``.
 /// Copy into a SwiftUI view, `AppDelegate`, or playground after linking EventKit
 /// and adding the privacy keys from `Privacy-Usage.md`.
-enum CalendarEventStoreExample {
-  static func runDemo() async {
+public enum CalendarEventStoreExample {
+  public static func runDemo() async {
     let calendarStore = CalendarEventStore()
 
     do {
@@ -58,10 +58,12 @@ enum CalendarEventStoreExample {
 import SwiftUI
 
 /// Minimal SwiftUI button that runs the demo after the user taps.
-struct CalendarAccessDemoButton: View {
+public struct CalendarAccessDemoButton: View {
   @State private var statusText = "Tap to request access and sync a sample event"
 
-  var body: some View {
+  public init() {}
+
+  public var body: some View {
     Button(statusText) {
       Task {
         await CalendarEventStoreExample.runDemo()

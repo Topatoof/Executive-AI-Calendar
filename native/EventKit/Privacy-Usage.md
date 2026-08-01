@@ -32,13 +32,15 @@ If you only need **write** access on newer OS versions, you may instead use `NSC
 
 ## Setup checklist
 
-1. Link the **EventKit** framework to the app target.
+1. Add this folder as a local Swift package (`Package.swift` → product `ExecAIEventKit`) **or** copy the `.swift` sources and link **EventKit**.
 2. Add the privacy keys above.
-3. Copy [`CalendarEventStore.swift`](CalendarEventStore.swift) into the target (or add this folder as a Swift package / shared sources).
+3. `import ExecAIEventKit` (package) or use the types directly if sources are in the app target.
 4. Call `await CalendarEventStore().requestAccess()` before read/write APIs.
 5. On device: Settings → Privacy & Security → Calendars → allow your app if the user previously denied.
 
 ## Files
 
+- `Package.swift` — local Swift package definition
 - `CalendarEventStore.swift` — request access; fetch, create, update, delete events
 - `ExampleUsage.swift` — sample async flow and optional SwiftUI button
+- `README.md` — add-to-Xcode quick start
